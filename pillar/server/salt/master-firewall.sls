@@ -1,0 +1,4 @@
+firewall:
+  permit:
+    - ssh
+    - snmp

@@ -1,0 +1,17 @@
+{%- if grains.os == "ios" %}
+lldp run
+!
+!
+end
+
+{%- elif "nxos" in grains.os %}
+!
+feature lldp
+
+{%- elif grains.os == "junos" and grains.model == "SRX550" -%}
+ protocols {
+     lldp {
+         interface all;
+     }
+ }
+{%- endif %}

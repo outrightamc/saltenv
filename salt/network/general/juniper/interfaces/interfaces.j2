@@ -1,0 +1,99 @@
+{% if grains.os == "junos" %}
+{% if grains.model == "MX204" %}
+{% if rpm is defined and rpm|length %}
+services {
+    {% if rpm is defined %}
+    replace: rpm {
+    {% for probe in rpm %}        
+        probe {{ probe.owner|upper }} {
+            test {{ grains.hostname|upper~'_'~probe.dst_hostname|upper }} {
+                probe-type icmp-ping-timestamp;
+                target address {{ probe.dst_ip }};
+                probe-count 3;
+                probe-interval 1;
+                test-interval 10;
+                source-address {{ probe.src_ip }};
+                data-size 64;
+                thresholds {
+                    successive-loss 3;
+                }
+                one-way-hardware-timestamp;
+            }
+        }
+    }
+    {% endfor %}
+    {% endif %}
+}
+{% endif %}
+replace: interfaces {
+    {% for itf in interfaces %}
+    {{ itf.name }} {
+        {% if itf.unit is defined %}
+            {% if itf.unit.id > 0 and itf.name != 'lo0' %}
+        vlan-tagging;
+            {% endif %}
+        {% endif %}
+        {% if itf.name != 'lo0' %}
+        description {{ itf.descr }};
+        {% endif %}
+        {# disable interface in pillar #}
+        {% if itf.state is defined and itf.state == 'disable' %}
+        {{ itf.state }};
+        {% endif %}
+        {# configure MTU #}
+        {% if itf.mtu is defined %}
+        mtu {{ itf.mtu }};
+        {% endif %}
+        {% if itf.lacp is defined %}
+        {# On an EX series device, the speed is set under ether-options,
+        while on an MX series device, the speed is set under gigether-options #}
+        gigether-options {
+            802.3ad {{ itf.lacp }};
+        }
+        {% endif %}
+        {% if itf.speed1g is defined %}
+        gigether-options {
+            no-auto-negotiation;
+            speed 1g;
+        }
+        {% endif %}
+        {% if itf.name.startswith('ae') %}
+        aggregated-ether-options {
+            lacp {
+                active;
+                periodic fast;
+            }
+        }        
+        {% endif %}
+        {% if itf.unit is defined %}
+        unit {{ itf.unit.id }} {
+            {% if itf.unit.id is defined %}
+            {% if itf.unit.id > 0 and itf.name != 'lo0' %}
+            vlan-id {{ itf.unit.id }};
+            {% endif %}
+            {% if itf.name == 'lo0' %}
+            description {{ itf.descr }};
+            {% endif %}
+            {% endif %}            
+            family inet {
+                address {{ itf.unit.address }};
+                {% if itf.unit.mtu is defined %}
+                mtu {{ itf.unit.mtu }};
+                {% endif %}
+                {# apply filter if loopback lo0.0 #}
+                {% if itf.name == 'lo0' and itf.unit.id == 0 %}
+                filter {
+                    input-list [ ACCEPT_NETWORK_SERVICES_V4 ACCEPT_MGMT_SERVICES_V4 DISCARD_ALL_V4 ];
+                }
+                {% endif %}
+            }
+            {% if itf.unit.mpls is defined and itf.unit.mpls == true %}
+            family mpls;
+            {% endif %}
+        }
+        {% endif %}
+    }
+    {% endfor %}
+}
+{% endif %}
+{% endif %}

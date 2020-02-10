@@ -1,0 +1,116 @@
+{%- if grains.os == "ios" -%}
+
+no access-list 1485
+{%- for h in snmp.clients %}
+access-list 1485 permit {{ h }}
+{%- endfor %}
+!
+{%- set cmd = 'show run | i snmp-server' %}
+{%- set existing_config = salt.net.cli(cmd)['out'][cmd] %}
+{%- if existing_config != "" %}
+  {%- for l in existing_config.split('\n') %}
+no {{ l }}
+  {%- endfor %}
+{%- endif %}
+!
+snmp-server contact {{ snmp.contact }}
+snmp-server location {{ region }}-{{ dc }}
+!
+{%- for c, conf in snmp.community.items() %}
+snmp-server community {{ c }} {{ conf.mode }} 1485
+{%- endfor %}
+!
+{%- for c, hosts in trap.items() %}
+  {%- if source_address.interface == "GigabitEthernet0" and "LINUX_IOSD" in grains.version or "aubixrt01" in grains.hostname %}
+    {%- for h in hosts %}
+snmp-server host {{ h }} vrf Mgmt-intf version 2c {{ c }}
+    {%- endfor %}
+  {%- else %}
+    {%- for h in hosts %}
+snmp-server host {{ h }} version 2c {{ c }}
+    {%- endfor %}
+  {%- endif %}
+{%- endfor %}
+!
+!
+end
+
+{%- elif "nxos" in grains.os -%}
+
+no ip access-list SNMP_CLIENTS
+ip access-list SNMP_CLIENTS
+{%- for h in snmp.clients %}
+ permit ip {{ h }}/32 any
+{%- endfor %}
+!
+{%- set cmd = 'show run | i snmp-server' %}
+{%- set existing_config = salt.net.cli(cmd)['out'][cmd] %}
+{%- if existing_config != "" %}
+  {%- for l in existing_config.split('\n') %}
+no {{ l }}
+  {%- endfor %}
+{%- endif %}
+!
+snmp-server contact {{ snmp.contact }}
+snmp-server location {{ region }}-{{ dc }}
+!
+{%- for c, conf in snmp.community.items() %}
+snmp-server community {{ c }} {{ conf.mode }}
+snmp-server community {{ c }} use-acl SNMP_CLIENTS
+{%- endfor %}
+!
+{%- for c, hosts in trap.items() %}
+  {%- for h in hosts %}
+snmp-server host {{ h }} version 2c {{ c }}
+  {%- endfor %}
+{%- endfor %}
+!
+!
+end
+
+{%- elif grains.os == "junos" -%}
+
+replace: snmp {
+  location "{{ region }}-{{ dc }}";
+  contact "{{ snmp.contact }}";
+  client-list SNMP_CLIENTS {
+  {%- for h in snmp.clients %}
+    {{ h }}/32;
+  {%- endfor %}
+  }
+
+  {%- if 'routing_instance' in snmp %}
+  routing-instance-access {
+    access-list {
+      {{ snmp.routing_instance }};
+    }
+  }
+  {%- endif %}
+
+  {%- for c, c_conf in snmp.community.items() %}
+  community {{ c }} {
+    {%- if c_conf.mode == 'rw' %}
+    authorization read-write;
+    {%- else %}
+    authorization read-only;
+    {%- endif %}
+    client-list-name SNMP_CLIENTS;
+  }
+  {%- endfor %}
+  {%- for c, hosts in trap.items() %}
+  trap-group {{ c }} {
+    categories {
+       chassis;
+       link;
+       routing;
+    }
+    targets {
+      {%- for h in hosts %}
+      {{ h }};
+      {%- endfor %}
+    }
+  }
+  {%- endfor %}
+}
+
+{%- endif %}

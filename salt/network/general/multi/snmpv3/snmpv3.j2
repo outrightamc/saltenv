@@ -1,0 +1,8 @@
+{%- if grains.hostname == "atlinet01" -%}
+replace: snmp v3 notify {
+    {%- for v in snmpv3.notify.atl %}
+    {{ name }} tag {{ tag}};
+    {{ name }} type {{ type}};
+    {%- endfor %}
+}
+{%- endif %}
